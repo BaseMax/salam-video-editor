@@ -23,12 +23,12 @@ salam run main.salam -- input.mp4 -o output.mp4
 
 ### Quick start with the bundled intro/outro images
 
-This repository ships `start.png` and `end.png`. To process `episode1.mp4` with a 3-second intro and outro:
+This repository ships `images/start.png` and `images/end.png`. To process `episode1.mp4` with a 3-second intro and outro:
 
 ```bash
 salam run main.salam -- episode1.mp4 \
-  --intro-image start.png --intro-duration 3 \
-  --outro-image end.png --outro-duration 3 \
+  --intro-image images/start.png --intro-duration 3 \
+  --outro-image images/end.png --outro-duration 3 \
   -o output.mp4
 ```
 
@@ -59,4 +59,4 @@ Or use the helper script:
 
 - `~` in paths is expanded using `HOME` (or `USERPROFILE` on Windows).
 - Output defaults to `INPUT_edited.mp4` next to the input.
-- Image and video outputs are gitignored; only `start.png` and `end.png` are tracked.
+- Image and video outputs are gitignored; only `images/start.png` and `images/end.png` are tracked.

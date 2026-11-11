@@ -10,8 +10,8 @@
 *.bmp
 *.webp
 # Keep the bundled intro/outro images
-!start.png
-!end.png
+!images/start.png
+!images/end.png
 
 # Videos
 *.mp4
