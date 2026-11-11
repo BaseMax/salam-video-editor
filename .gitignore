@@ -1,3 +1,21 @@
 .salam-build/
 /salam-video-editor
 /salam-video-editor.exe
+
+# Images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.webp
+
+# Videos
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.flv
+*.wmv
+*.m4v
