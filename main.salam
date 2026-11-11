@@ -32,7 +32,7 @@ func main:
         ai++
     end
 
-    fs := flag.New("video_trim", "Trim a video, add optional intro/outro images, and compress with FFmpeg.")
+    mut fs := flag.New("video_trim", "Trim a video, add optional intro/outro images, and compress with FFmpeg.")
     flag.AddStr(fs, "output", "o", "", "Output file (default: INPUT_edited.mp4)")
     flag.AddFloat(fs, "remove-start", "", 0.0, "Seconds to remove from the beginning of the original video")
     flag.AddFloat(fs, "remove-end", "", 0.0, "Seconds to remove from the end of the original video")
