@@ -1,0 +1,327 @@
+// lang: en
+
+package main
+
+import os
+import os.shell
+import fs.path
+import fs.file
+import flag
+import term
+import str
+import math
+import conv
+
+include types "types.salam"
+include util "util.salam"
+include probe "probe.salam"
+include filter "filter.salam"
+
+func exit_with(code: int):
+    os.Exit(code)
+end
+
+func main:
+    all_args := os.Args()
+    defer all_args.free()
+
+    mut arglist := Vector {} as Vector<str>
+    mut ai := 1
+    until ai < all_args.len():
+        arglist.push(all_args.get(ai))
+        ai++
+    end
+
+    fs := flag.New("video_trim", "Trim a video, add optional intro/outro images, and compress with FFmpeg.")
+    flag.AddStr(fs, "output", "o", "", "Output file (default: INPUT_edited.mp4)")
+    flag.AddFloat(fs, "remove-start", "", 0.0, "Seconds to remove from the beginning of the original video")
+    flag.AddFloat(fs, "remove-end", "", 0.0, "Seconds to remove from the end of the original video")
+    flag.AddStr(fs, "intro-image", "", "", "Image to show before the video")
+    flag.AddFloat(fs, "intro-duration", "", 3.0, "How many seconds to show the intro image")
+    flag.AddStr(fs, "outro-image", "", "", "Image to show after the video")
+    flag.AddFloat(fs, "outro-duration", "", 3.0, "How many seconds to show the outro image")
+    flag.AddStr(fs, "codec", "", "h264", "h264 is more compatible; h265 usually makes smaller files")
+    flag.AddInt(fs, "crf", "", 0, "Quality level: lower = better/larger. Defaults: 23 for H.264, 28 for H.265")
+    flag.AddStr(fs, "preset", "", "slow", "Slower presets usually compress better, but take longer")
+    flag.AddStr(fs, "audio-bitrate", "", "128k", "AAC audio bitrate, e.g. 128k or 192k")
+    flag.AddInt(fs, "max-dimension", "", 1920, "Maximum width or height; 1920 caps 4K at 1080p. Use 0 to keep source resolution")
+    flag.AddStr(fs, "ffmpeg", "", "ffmpeg", "FFmpeg executable name or full path")
+    flag.AddStr(fs, "ffprobe", "", "ffprobe", "FFmpeg executable name or full path")
+    flag.AddBool(fs, "overwrite", "", false, "Overwrite the output file if it already exists")
+
+    ok := flag.Parse(fs, arglist)
+    if not ok:
+        term.WriteErr("ERROR: ".concat(flag.Error(fs)).concat("\n"))
+        exit_with(2)
+    end
+    if flag.HelpWanted(fs):
+        term.WriteErr(flag.Usage(fs))
+        ret
+    end
+
+    positional := flag.Positional(fs)
+    if positional.len() == 0:
+        term.WriteErr("ERROR: missing input file\n")
+        exit_with(2)
+    end
+    input_raw := positional.get(0)
+
+    input_path := path.Abs(util.expand_path(input_raw))
+
+    if not file.Exists(input_path):
+        term.WriteErr("ERROR: Input file not found: ".concat(input_path).concat("\n"))
+        exit_with(2)
+    end
+
+    mut output_path := ""
+    output_arg := flag.GetStr(fs, "output")
+    if output_arg.len() > 0:
+        output_path = path.Abs(util.expand_path(output_arg))
+    else:
+        dir := path.Parent(input_path)
+        stem := path.Stem(input_path)
+        output_path = path.Join(dir, stem.concat("_edited.mp4"))
+    end
+
+    if output_path == input_path:
+        term.WriteErr("ERROR: Output path must be different from the input path.\n")
+        exit_with(2)
+    end
+    if file.Exists(output_path) and not flag.GetBool(fs, "overwrite"):
+        term.WriteErr("ERROR: Output already exists: ".concat(output_path).concat("\nUse --overwrite to replace it, or choose another --output path.\n"))
+        exit_with(2)
+    end
+
+    remove_start := flag.GetFloat(fs, "remove-start")
+    remove_end := flag.GetFloat(fs, "remove-end")
+    intro_duration_arg := flag.GetFloat(fs, "intro-duration")
+    outro_duration_arg := flag.GetFloat(fs, "outro-duration")
+    max_dimension := flag.GetInt(fs, "max-dimension")
+
+    if remove_start < 0.0:
+        term.WriteErr("ERROR: --remove-start cannot be negative.\n")
+        exit_with(2)
+    end
+    if remove_end < 0.0:
+        term.WriteErr("ERROR: --remove-end cannot be negative.\n")
+        exit_with(2)
+    end
+    if intro_duration_arg < 0.0:
+        term.WriteErr("ERROR: --intro-duration cannot be negative.\n")
+        exit_with(2)
+    end
+    if outro_duration_arg < 0.0:
+        term.WriteErr("ERROR: --outro-duration cannot be negative.\n")
+        exit_with(2)
+    end
+    if max_dimension < 0:
+        term.WriteErr("ERROR: --max-dimension cannot be negative.\n")
+        exit_with(2)
+    end
+
+    mut intro_path := ""
+    intro_arg := flag.GetStr(fs, "intro-image")
+    if intro_arg.len() > 0:
+        intro_path = path.Abs(util.expand_path(intro_arg))
+    end
+    mut outro_path := ""
+    outro_arg := flag.GetStr(fs, "outro-image")
+    if outro_arg.len() > 0:
+        outro_path = path.Abs(util.expand_path(outro_arg))
+    end
+    if intro_path.len() > 0 and not file.Exists(intro_path):
+        term.WriteErr("ERROR: Intro image not found: ".concat(intro_path).concat("\n"))
+        exit_with(2)
+    end
+    if outro_path.len() > 0 and not file.Exists(outro_path):
+        term.WriteErr("ERROR: Outro image not found: ".concat(outro_path).concat("\n"))
+        exit_with(2)
+    end
+
+    mut intro_duration := 0.0
+    if intro_path.len() > 0 and intro_duration_arg > 0.0:
+        intro_duration = intro_duration_arg
+    end
+    mut outro_duration := 0.0
+    if outro_path.len() > 0 and outro_duration_arg > 0.0:
+        outro_duration = outro_duration_arg
+    end
+    if intro_path.len() > 0 and intro_duration == 0.0:
+        intro_path = ""
+    end
+    if outro_path.len() > 0 and outro_duration == 0.0:
+        outro_path = ""
+    end
+
+    ffmpeg := flag.GetStr(fs, "ffmpeg")
+    ffprobe := flag.GetStr(fs, "ffprobe")
+    codec := flag.GetStr(fs, "codec")
+    preset := flag.GetStr(fs, "preset")
+    audio_bitrate := flag.GetStr(fs, "audio-bitrate")
+    overwrite := flag.GetBool(fs, "overwrite")
+
+    try:
+        info := probe.probe_video(input_path, ffprobe)
+        source_duration := info.duration
+        main_duration := source_duration - remove_start - remove_end
+        if remove_start + remove_end >= source_duration or main_duration <= 0.0:
+            throw Error.New(ErrorKind.InvalidArgument, "The requested trim removes the entire video. Source duration: ".concat(conv.FormatFloat(source_duration)).concat(" seconds."))
+        end
+
+        mut width := info.width
+        mut height := info.height
+        if max_dimension > 0:
+            factor := math.Min(1.0, max_dimension as f64 / math.Max(width as f64, height as f64))
+            width = util.even_dimension((width as f64) * factor)
+            height = util.even_dimension((height as f64) * factor)
+        else:
+            width = util.even_dimension(width as f64)
+            height = util.even_dimension(height as f64)
+        end
+
+        fps_num := info.fps_num
+        fps_den := info.fps_den
+        fps_expr := conv.FormatInt(fps_num as i64).concat("/").concat(conv.FormatInt(fps_den as i64))
+        frame_timebase_expr := conv.FormatInt(fps_den as i64).concat("/").concat(conv.FormatInt(fps_num as i64))
+
+        // Build inputs
+        mut command := Vector {} as Vector<str>
+        command.push("-hide_banner")
+        command.push("-loglevel")
+        command.push("warning")
+        command.push("-stats")
+
+        mut input_index := 0
+        mut intro_index := 0
+        mut has_intro := false
+        mut outro_index := 0
+        mut has_outro := false
+
+        if intro_path.len() > 0:
+            intro_index = input_index
+            has_intro = true
+            command.push("-loop")
+            command.push("1")
+            command.push("-framerate")
+            command.push(fps_expr)
+            command.push("-t")
+            command.push(util.seconds(intro_duration))
+            command.push("-i")
+            command.push(intro_path)
+            input_index++
+        end
+
+        main_index := input_index
+        command.push("-i")
+        command.push(input_path)
+        input_index++
+
+        if outro_path.len() > 0:
+            outro_index = input_index
+            has_outro = true
+            command.push("-loop")
+            command.push("1")
+            command.push("-framerate")
+            command.push(fps_expr)
+            command.push("-t")
+            command.push(util.seconds(outro_duration))
+            command.push("-i")
+            command.push(outro_path)
+        end
+
+        graph := filter.build_filter_graph(main_index, has_intro, intro_index, has_outro, outro_index, intro_duration, outro_duration, remove_start, main_duration, width, height, fps_expr, frame_timebase_expr, info.has_audio)
+
+        command.push("-filter_complex")
+        command.push(graph)
+        command.push("-map")
+        command.push("[out_v]")
+        if info.has_audio:
+            command.push("-map")
+            command.push("[out_a]")
+            command.push("-c:a")
+            command.push("aac")
+            command.push("-b:a")
+            command.push(audio_bitrate)
+        else:
+            command.push("-an")
+        end
+
+        mut crf := 0
+        if codec == "h264":
+            if flag.WasSet(fs, "crf"):
+                crf = flag.GetInt(fs, "crf") as int
+            else:
+                crf = 23
+            end
+            command.push("-c:v")
+            command.push("libx264")
+            command.push("-preset")
+            command.push(preset)
+            command.push("-crf")
+            command.push(conv.FormatInt(crf as i64))
+        else:
+            if flag.WasSet(fs, "crf"):
+                crf = flag.GetInt(fs, "crf") as int
+            else:
+                crf = 28
+            end
+            command.push("-c:v")
+            command.push("libx265")
+            command.push("-preset")
+            command.push(preset)
+            command.push("-crf")
+            command.push(conv.FormatInt(crf as i64))
+            command.push("-tag:v")
+            command.push("hvc1")
+        end
+
+        command.push("-pix_fmt")
+        command.push("yuv420p")
+        command.push("-enc_time_base:v")
+        command.push(conv.FormatInt(fps_den as i64).concat(":").concat(conv.FormatInt(fps_num as i64)))
+        command.push("-fps_mode:v")
+        command.push("cfr")
+        command.push("-r")
+        command.push(fps_expr)
+        command.push("-map_metadata")
+        command.push(conv.FormatInt(main_index as i64))
+        command.push("-metadata:s:v:0")
+        command.push("rotate=0")
+        command.push("-movflags")
+        command.push("+faststart")
+        if overwrite:
+            command.push("-y")
+        else:
+            command.push("-n")
+        end
+        command.push(output_path)
+
+        os.MkdirAll(path.Parent(output_path))
+
+        println "Input:       ", input_path
+        println "Output:      ", output_path
+        println "Trim:        remove ", remove_start, "s from start, ", remove_end, "s from end"
+        println "Video:       ", width, "x", height, " at ", (fps_num as f64) / (fps_den as f64), " fps, ", codec.upper(), ", CRF ", crf, ", preset ", preset
+        println "Intro/outro: ", intro_duration, "s / ", outro_duration, "s"
+        println "Starting FFmpeg...\n"
+
+        r := shell.Run(ffmpeg, command)
+        if r.code != 0:
+            mut details := r.err
+            if details.len() == 0:
+                details = r.out
+            end
+            if details.len() == 0:
+                details = "ffmpeg failed"
+            end
+            throw Error.New(ErrorKind.Internal, details)
+        end
+        println ""
+        println "Done: ", output_path
+    catch e:
+        term.WriteErr("\nERROR: ".concat(e.message).concat("\n"))
+        exit_with(1)
+    end
+
+    ret
+end

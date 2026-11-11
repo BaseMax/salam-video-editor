@@ -1,0 +1,69 @@
+// lang: en
+
+package main
+
+import os
+import os.shell
+import str
+import conv
+
+pub func expand_path(p: str): str:
+    if str.StartsWith(p, "~"):
+        mut home := os.Env("HOME")
+        if home.len() == 0:
+            home = os.Env("USERPROFILE")
+        end
+        if p == "~":
+            ret home
+        end
+        if str.StartsWith(p, "~/"):
+            ret home.concat("/").concat(p.substr(2, p.len() - 2))
+        end
+    end
+    ret p
+end
+
+pub func run_capture(program: str, args: Vector<str>): str throws:
+    r := shell.Run(program, args)
+    if r.code == 0 - 1:
+        throw Error.New(ErrorKind.NotFound, "Could not find '".concat(program).concat("'. Install FFmpeg (including ffprobe) and make sure both programs are on PATH."))
+    end
+    if r.code != 0:
+        mut details := r.err
+        if details.len() == 0:
+            details = r.out
+        end
+        if details.len() == 0:
+            details = "command failed"
+        end
+        throw Error.New(ErrorKind.Internal, details)
+    end
+    ret r.out
+end
+
+pub func seconds(value: f64): str:
+    mut res := conv.FormatFloatPrec(value, 6)
+    mut done := false
+    until done:
+        if res.len() > 0 and res.char_at(res.len() - 1) == "0":
+            res = res.substr(0, res.len() - 1)
+        else:
+            done = true
+        end
+    end
+    if res.len() > 0 and res.char_at(res.len() - 1) == ".":
+        res = res.substr(0, res.len() - 1)
+    end
+    if res.len() == 0:
+        res = "0"
+    end
+    ret res
+end
+
+pub func even_dimension(value: f64): int:
+    result := (value as int) / 2 * 2
+    if result < 2:
+        ret 2
+    end
+    ret result
+end

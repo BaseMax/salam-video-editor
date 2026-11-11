@@ -1,0 +1,142 @@
+// lang: en
+
+package main
+
+import os
+import os.shell
+import encoding.json
+import str
+import math
+import conv
+
+include util "util.salam"
+include types "types.salam"
+
+pub func probe_video(input_path: str, ffprobe: str): types.VideoInfo throws:
+    mut args := Vector {} as Vector<str>
+    args.push("-v")
+    args.push("error")
+    args.push("-show_streams")
+    args.push("-show_format")
+    args.push("-of")
+    args.push("json")
+    args.push(input_path)
+
+    raw := try util.run_capture(ffprobe, args)
+
+    streams_text := json.Get(raw, "streams")
+    streams := json.Items(streams_text)
+
+    mut video_text := ""
+    mut found_video := false
+    mut i := 0
+    until i < streams.len() and not found_video:
+        s := streams.get(i)
+        if json.Get(s, "codec_type") == "video":
+            video_text = s
+            found_video = true
+        end
+        i++
+    end
+    if video_text.len() == 0:
+        throw Error.New(ErrorKind.InvalidArgument, "The input file does not contain a video stream.")
+    end
+
+    mut duration_value := json.Get(video_text, "duration")
+    if duration_value.len() == 0 or duration_value == "N/A":
+        format_text := json.Get(raw, "format")
+        duration_value = json.Get(format_text, "duration")
+    end
+    mut duration := 0.0
+    try:
+        duration = conv.ParseFloat(duration_value)
+    catch e:
+        throw Error.New(ErrorKind.InvalidArgument, "Could not determine the input video's duration: ".concat(e.message))
+    end
+    if duration <= 0.0:
+        throw Error.New(ErrorKind.InvalidArgument, "The input video's duration is invalid.")
+    end
+
+    mut width := conv.ParseIntOr(json.Get(video_text, "width"), 0) as int
+    mut height := conv.ParseIntOr(json.Get(video_text, "height"), 0) as int
+    if width <= 0 or height <= 0:
+        throw Error.New(ErrorKind.InvalidArgument, "Could not determine the input video's dimensions.")
+    end
+
+    mut rotation := 0.0
+    side_list_text := json.Get(video_text, "side_data_list")
+    if side_list_text.len() > 0:
+        side_items := json.Items(side_list_text)
+        mut si := 0
+        until si < side_items.len():
+            item := side_items.get(si)
+            if json.Has(item, "rotation"):
+                rotation = conv.ParseFloatOr(json.Get(item, "rotation"), rotation)
+                si = side_items.len()
+            end
+            si++
+        end
+    end
+    if rotation == 0.0:
+        tags_text := json.Get(video_text, "tags")
+        if tags_text.len() > 0:
+            rotation = conv.ParseFloatOr(json.Get(tags_text, "rotate"), 0.0)
+        end
+    end
+    if (math.Round(rotation) as int) % 180 != 0:
+        tmp := width
+        width = height
+        height = tmp
+    end
+
+    mut fps_num := 30
+    mut fps_den := 1
+    mut fps_found := false
+    mut cand_list := Vector {} as Vector<str>
+    cand_list.push(json.Get(video_text, "avg_frame_rate"))
+    cand_list.push(json.Get(video_text, "r_frame_rate"))
+    mut ci := 0
+    until ci < cand_list.len() and not fps_found:
+        cand := cand_list.get(ci)
+        if cand.len() > 0:
+            slash := cand.find("/")
+            mut n_str := cand
+            mut d_str := "1"
+            if slash >= 0:
+                n_str = cand.substr(0, slash)
+                d_str = cand.substr(slash + 1, cand.len() - slash - 1)
+            end
+            n := conv.ParseIntOr(n_str, 0)
+            mut d := conv.ParseIntOr(d_str, 1)
+            if d == 0:
+                d = 1
+            end
+            if n > 0 and d > 0:
+                fps_num = n as int
+                fps_den = d as int
+                fps_found = true
+            end
+        end
+        ci++
+    end
+    if not fps_found:
+        fps_num = 30
+        fps_den = 1
+    end
+    if fps_num > 60 * fps_den:
+        fps_num = 60
+        fps_den = 1
+    end
+
+    mut has_audio := false
+    mut ai := 0
+    until ai < streams.len() and not has_audio:
+        s := streams.get(ai)
+        if json.Get(s, "codec_type") == "audio":
+            has_audio = true
+        end
+        ai++
+    end
+
+    ret types.VideoInfo { duration = duration, width = width, height = height, fps_num = fps_num, fps_den = fps_den, has_audio = has_audio }
+end

@@ -1,0 +1,12 @@
+// lang: en
+
+package main
+
+pub struct VideoInfo:
+    pub duration: f64 = 0.0
+    pub width: int = 0
+    pub height: int = 0
+    pub fps_num: int = 30
+    pub fps_den: int = 1
+    pub has_audio: bool = false
+end
