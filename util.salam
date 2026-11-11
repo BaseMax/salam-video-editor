@@ -6,6 +6,7 @@ import os
 import os.shell
 import str
 import conv
+import fs.path
 
 pub func expand_path(p: str): str:
     if str.StartsWith(p, "~"):
@@ -16,8 +17,9 @@ pub func expand_path(p: str): str:
         if p == "~":
             ret home
         end
-        if str.StartsWith(p, "~/"):
-            ret home.concat("/").concat(p.substr(2, p.len() - 2))
+        if str.StartsWith(p, "~/") or str.StartsWith(p, "~\\"):
+            rest := p.substr(2, p.len() - 2)
+            ret path.Join(home, rest)
         end
     end
     ret p
@@ -60,10 +62,29 @@ pub func seconds(value: f64): str:
     ret res
 end
 
+
 pub func even_dimension(value: f64): int:
     result := (value as int) / 2 * 2
     if result < 2:
         ret 2
     end
     ret result
+end
+
+pub func tool_exists(program: str): bool:
+    mut args := Vector {} as Vector<str>
+    args.push("-version")
+    r := shell.Run(program, args)
+    ret r.code != 0 - 1
+end
+
+pub func missing_tool_message(program: str): str:
+    mut msg := "ERROR: '".concat(program).concat("' was not found on PATH.\n")
+    msg = msg.concat("Install FFmpeg (it provides both ffmpeg and ffprobe) for your OS:\n")
+    msg = msg.concat("  Windows:  winget install Gyan.FFmpeg   (or download from https://ffmpeg.org/download.html and add the bin folder to PATH)\n")
+    msg = msg.concat("  macOS:    brew install ffmpeg\n")
+    msg = msg.concat("  Linux:    sudo apt install ffmpeg   (Debian/Ubuntu)  |  sudo dnf install ffmpeg  (Fedora)  |  sudo pacman -S ffmpeg  (Arch)\n")
+    msg = msg.concat("  FreeBSD:  sudo pkg install ffmpeg\n")
+    msg = msg.concat("Then reopen your terminal and try again.\n")
+    ret msg
 end

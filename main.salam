@@ -156,6 +156,15 @@ func main:
     ffmpeg := flag.GetStr(fs, "ffmpeg")
     ffprobe := flag.GetStr(fs, "ffprobe")
     codec := flag.GetStr(fs, "codec")
+
+    if not util.tool_exists(ffmpeg):
+        term.WriteErr(util.missing_tool_message(ffmpeg))
+        exit_with(2)
+    end
+    if not util.tool_exists(ffprobe):
+        term.WriteErr(util.missing_tool_message(ffprobe))
+        exit_with(2)
+    end
     preset := flag.GetStr(fs, "preset")
     audio_bitrate := flag.GetStr(fs, "audio-bitrate")
     overwrite := flag.GetBool(fs, "overwrite")
