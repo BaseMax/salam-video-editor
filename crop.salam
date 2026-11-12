@@ -2,7 +2,6 @@
 
 package main
 
-import os
 import os.shell
 import str
 import conv
@@ -51,26 +50,22 @@ pub func detect_crop(input_path: str, ffmpeg: str, start: f64, duration: f64): t
     mut i := 0
     until i < text.len():
         mut is_crop := false
-        if i + 5 <= text.len():
-            if text.substr(i, 5) == "crop=":
-                is_crop = true
-            end
+        if i + 5 <= text.len() and text.substr(i, 5) == "crop=":
+            is_crop = true
         end
         if is_crop:
             mut j := i + 5
-            mut buf := str.NewBuilder()
-            defer str.BufFree(buf)
+            mut val := ""
             until j < text.len():
                 c := text.substr(j, 1)
-                if c == " " or c == "\n" or c == "\r" or c == "\t":
+                if c == " " or c == "\n" or c == "\r" or c == "\t" or c == "]":
                     break
                 end
-                str.BufAppend(buf, c)
+                val = val.concat(c)
                 j++
             end
-            candidate := str.BufStr(buf)
-            if candidate.len() > 0:
-                last = candidate
+            if val.len() > 0:
+                last = val
             end
             i = j
         else:
@@ -85,21 +80,18 @@ pub func detect_crop(input_path: str, ffmpeg: str, start: f64, duration: f64): t
     // parse W:H:X:Y
     mut parts := Vector {} as Vector<str>
     mut k := 0
-    mut cur := str.NewBuilder()
-    defer str.BufFree(cur)
+    mut cur := ""
     until k < last.len():
-        c := last.char_at(k)
+        c := last.substr(k, 1)
         if c == ":":
-            parts.push(str.BufStr(cur))
-            str.BufReset(cur)
+            parts.push(cur)
+            cur = ""
         else:
-            str.BufAppend(cur, c)
+            cur = cur.concat(c)
         end
         k++
     end
-    if str.BufLen(cur) > 0:
-        parts.push(str.BufStr(cur))
-    end
+    parts.push(cur)
     if parts.len() < 4:
         throw Error.New(ErrorKind.Internal, "Could not parse crop value: ".concat(last))
     end
@@ -124,6 +116,17 @@ pub func detect_segments(input_path: str, ffmpeg: str, trim_start: f64, main_dur
     interval := 30.0
     sample_dur := 4.0
     mut t := 0.0
+
+    first_end := math.Min(first_min, main_duration)
+    mut last_start := main_duration - last_min
+    if last_start < 0.0:
+        last_start = 0.0
+    end
+    if last_start < first_end:
+        // overlap: split at midpoint for padding choice
+        last_start = first_end
+    end
+
     until t < main_duration:
         mut seg_dur := interval
         if t + seg_dur > main_duration:
@@ -133,25 +136,19 @@ pub func detect_segments(input_path: str, ffmpeg: str, trim_start: f64, main_dur
         if sdur > seg_dur:
             sdur = seg_dur
         end
+        if sdur < 1.0:
+            sdur = seg_dur
+        end
         sample_start := trim_start + t
         rect := try detect_crop(input_path, ffmpeg, sample_start, sdur)
 
-        // pad based on time position
+        // padding by segment start time
         mut pad := 0
-        first_end := math.Min(first_min, main_duration)
         if t < first_end:
             pad = first_pad
         end
-        // last region: from (main_duration - last_min) to end
-        mut last_start := main_duration - last_min
-        if last_start < 0.0:
-            last_start = 0.0
-        end
-        if t + seg_dur > last_start:
-            // if segment overlaps last region, prefer last pad
-            if t >= last_start or pad == 0:
-                pad = last_pad
-            end
+        if t >= last_start:
+            pad = last_pad
         end
 
         // merge with previous if same rect and pad
@@ -170,8 +167,8 @@ pub func detect_segments(input_path: str, ffmpeg: str, trim_start: f64, main_dur
         end
         t += seg_dur
     end
+
     if segs.len() == 0:
-        // fallback single segment
         rect := try detect_crop(input_path, ffmpeg, trim_start, math.Min(main_duration, 5.0))
         segs.push(types.CropSegment { offset = 0.0, duration = main_duration, rect = rect, pad = 0 })
     end
