@@ -2,8 +2,6 @@
 
 package main
 
-import os
-import os.shell
 import encoding.json
 import str
 import math
@@ -23,9 +21,11 @@ pub func probe_video(input_path: str, ffprobe: str): types.VideoInfo throws:
     args.push(input_path)
 
     raw := try util.run_capture(ffprobe, args)
+    args.free()
 
     streams_text := json.Get(raw, "streams")
     streams := json.Items(streams_text)
+    defer streams.free()
 
     mut video_text := ""
     mut found_video := false
@@ -67,6 +67,7 @@ pub func probe_video(input_path: str, ffprobe: str): types.VideoInfo throws:
     side_list_text := json.Get(video_text, "side_data_list")
     if side_list_text.len() > 0:
         side_items := json.Items(side_list_text)
+        defer side_items.free()
         mut si := 0
         until si < side_items.len():
             item := side_items.get(si)
@@ -93,13 +94,14 @@ pub func probe_video(input_path: str, ffprobe: str): types.VideoInfo throws:
     mut fps_den := 1
     mut fps_found := false
     mut cand_list := Vector {} as Vector<str>
+    defer cand_list.free()
     cand_list.push(json.Get(video_text, "avg_frame_rate"))
     cand_list.push(json.Get(video_text, "r_frame_rate"))
     mut ci := 0
     until ci < cand_list.len() and not fps_found:
         cand := cand_list.get(ci)
         if cand.len() > 0:
-            slash := cand.find("/")
+            slash := str.Find(cand, "/")
             mut n_str := cand
             mut d_str := "1"
             if slash >= 0:

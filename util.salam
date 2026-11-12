@@ -73,6 +73,7 @@ end
 
 pub func tool_exists(program: str): bool:
     mut args := Vector {} as Vector<str>
+    defer args.free()
     args.push("-version")
     r := shell.Run(program, args)
     ret r.code != 0 - 1

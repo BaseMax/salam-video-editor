@@ -4,14 +4,12 @@ package main
 
 import str
 import conv
-import math
 
 include util "util.salam"
 include types "types.salam"
 
 pub func append_image_video(graph &: Vector<str>, video_parts &: Vector<str>, index: int, label: str, output_width: int, output_height: int, fps_expr: str, frame_timebase_expr: str):
     mut sb := str.NewBuilder()
-    defer str.BufFree(sb)
     str.BufAppend(sb, "[")
     str.BufAppend(sb, conv.FormatInt(index as i64))
     str.BufAppend(sb, ":v:0]scale=")
@@ -30,13 +28,17 @@ pub func append_image_video(graph &: Vector<str>, video_parts &: Vector<str>, in
     str.BufAppend(sb, label)
     str.BufAppend(sb, "]")
     graph.push(str.BufStr(sb))
+    str.BufFree(sb)
     video_parts.push("[".concat(label).concat("]"))
 end
 
 pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, has_outro: bool, outro_index: int, intro_duration: f64, outro_duration: f64, trim_start: f64, main_duration: f64, output_width: int, output_height: int, fps_expr: str, frame_timebase_expr: str, has_audio: bool, auto_crop: bool, crop: types.CropInfo): str:
     mut graph := Vector {} as Vector<str>
+    defer graph.free()
     mut video_parts := Vector {} as Vector<str>
+    defer video_parts.free()
     mut audio_parts := Vector {} as Vector<str>
+    defer audio_parts.free()
 
     if has_intro:
         append_image_video(graph, video_parts, intro_index, "intro_v", output_width, output_height, fps_expr, frame_timebase_expr)
@@ -44,6 +46,7 @@ pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, 
 
     if auto_crop:
         mut seg_labels := Vector {} as Vector<str>
+        defer seg_labels.free()
         mut si := 0
         until si < crop.segments.len():
             seg := crop.segments.get(si)
@@ -52,7 +55,6 @@ pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, 
             pad := seg.pad
             seg_start := trim_start + off
 
-            // crop rect for this segment = detected rect inset by pad
             mut cw := seg.rect.w - 2 * pad
             mut ch := seg.rect.h - 2 * pad
             mut cx := seg.rect.x + pad
@@ -69,7 +71,6 @@ pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, 
             if cy < 0:
                 cy = 0
             end
-            // make even for codec compatibility
             cw = (cw / 2) * 2
             ch = (ch / 2) * 2
             if cw < 2:
@@ -80,7 +81,6 @@ pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, 
             end
 
             mut sb := str.NewBuilder()
-            defer str.BufFree(sb)
             str.BufAppend(sb, "[")
             str.BufAppend(sb, conv.FormatInt(main_index as i64))
             str.BufAppend(sb, ":v:0]trim=start=")
@@ -95,7 +95,6 @@ pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, 
             str.BufAppend(sb, conv.FormatInt(cx as i64))
             str.BufAppend(sb, ":")
             str.BufAppend(sb, conv.FormatInt(cy as i64))
-            // scale to fill common output size and center-crop to exact dimensions
             str.BufAppend(sb, ",scale=")
             str.BufAppend(sb, conv.FormatInt(output_width as i64))
             str.BufAppend(sb, ":")
@@ -112,18 +111,38 @@ pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, 
             str.BufAppend(sb, conv.FormatInt(si as i64))
             str.BufAppend(sb, "_v]")
             graph.push(str.BufStr(sb))
-            seg_labels.push("[seg".concat(conv.FormatInt(si as i64)).concat("_v]"))
+            str.BufFree(sb)
+
+            mut lbl := str.NewBuilder()
+            str.BufAppend(lbl, "[seg")
+            str.BufAppend(lbl, conv.FormatInt(si as i64))
+            str.BufAppend(lbl, "_v]")
+            seg_labels.push(str.BufStr(lbl))
+            str.BufFree(lbl)
             si++
         end
 
         if seg_labels.len() == 0:
-            // fallback: no segments, treat as full video
-            seg_labels.push("[".concat(conv.FormatInt(main_index as i64)).concat(":v:0]"))
+            mut sb := str.NewBuilder()
+            str.BufAppend(sb, "[")
+            str.BufAppend(sb, conv.FormatInt(main_index as i64))
+            str.BufAppend(sb, ":v:0]trim=start=")
+            str.BufAppend(sb, util.seconds(trim_start))
+            str.BufAppend(sb, ":duration=")
+            str.BufAppend(sb, util.seconds(main_duration))
+            str.BufAppend(sb, ",setpts=PTS-STARTPTS,scale=")
+            str.BufAppend(sb, conv.FormatInt(output_width as i64))
+            str.BufAppend(sb, ":")
+            str.BufAppend(sb, conv.FormatInt(output_height as i64))
+            str.BufAppend(sb, ",setsar=1,fps=")
+            str.BufAppend(sb, fps_expr)
+            str.BufAppend(sb, ",setpts=N,format=yuv420p[seg0_v]")
+            graph.push(str.BufStr(sb))
+            str.BufFree(sb)
+            seg_labels.push("[seg0_v]")
         end
 
-        // concat segments into main_v
         mut vconcat_sb := str.NewBuilder()
-        defer str.BufFree(vconcat_sb)
         mut vi := 0
         until vi < seg_labels.len():
             str.BufAppend(vconcat_sb, seg_labels.get(vi))
@@ -133,10 +152,10 @@ pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, 
         str.BufAppend(vconcat_sb, conv.FormatInt(seg_labels.len() as i64))
         str.BufAppend(vconcat_sb, ":v=1:a=0[main_v]")
         graph.push(str.BufStr(vconcat_sb))
+        str.BufFree(vconcat_sb)
         video_parts.push("[main_v]")
     else:
         mut main_sb := str.NewBuilder()
-        defer str.BufFree(main_sb)
         str.BufAppend(main_sb, "[")
         str.BufAppend(main_sb, conv.FormatInt(main_index as i64))
         str.BufAppend(main_sb, ":v:0]trim=start=")
@@ -157,6 +176,7 @@ pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, 
         str.BufAppend(main_sb, frame_timebase_expr)
         str.BufAppend(main_sb, ",setpts=N,format=yuv420p[main_v]")
         graph.push(str.BufStr(main_sb))
+        str.BufFree(main_sb)
         video_parts.push("[main_v]")
     end
 
@@ -168,7 +188,6 @@ pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, 
         graph.push(video_parts.get(0).concat("null[out_v]"))
     else:
         mut vconcat_sb := str.NewBuilder()
-        defer str.BufFree(vconcat_sb)
         mut vi := 0
         until vi < video_parts.len():
             str.BufAppend(vconcat_sb, video_parts.get(vi))
@@ -178,21 +197,21 @@ pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, 
         str.BufAppend(vconcat_sb, conv.FormatInt(video_parts.len() as i64))
         str.BufAppend(vconcat_sb, ":v=1:a=0[out_v]")
         graph.push(str.BufStr(vconcat_sb))
+        str.BufFree(vconcat_sb)
     end
 
     if has_audio:
         if has_intro:
             mut intro_a_sb := str.NewBuilder()
-            defer str.BufFree(intro_a_sb)
             str.BufAppend(intro_a_sb, "anullsrc=r=48000:cl=stereo,atrim=duration=")
             str.BufAppend(intro_a_sb, util.seconds(intro_duration))
             str.BufAppend(intro_a_sb, ",asetpts=PTS-STARTPTS[intro_a]")
             graph.push(str.BufStr(intro_a_sb))
+            str.BufFree(intro_a_sb)
             audio_parts.push("[intro_a]")
         end
 
         mut main_a_sb := str.NewBuilder()
-        defer str.BufFree(main_a_sb)
         str.BufAppend(main_a_sb, "[")
         str.BufAppend(main_a_sb, conv.FormatInt(main_index as i64))
         str.BufAppend(main_a_sb, ":a:0]atrim=start=")
@@ -203,15 +222,16 @@ pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, 
         str.BufAppend(main_a_sb, util.seconds(main_duration))
         str.BufAppend(main_a_sb, ",asetpts=PTS-STARTPTS[main_a]")
         graph.push(str.BufStr(main_a_sb))
+        str.BufFree(main_a_sb)
         audio_parts.push("[main_a]")
 
         if has_outro:
             mut outro_a_sb := str.NewBuilder()
-            defer str.BufFree(outro_a_sb)
             str.BufAppend(outro_a_sb, "anullsrc=r=48000:cl=stereo,atrim=duration=")
             str.BufAppend(outro_a_sb, util.seconds(outro_duration))
             str.BufAppend(outro_a_sb, ",asetpts=PTS-STARTPTS[outro_a]")
             graph.push(str.BufStr(outro_a_sb))
+            str.BufFree(outro_a_sb)
             audio_parts.push("[outro_a]")
         end
 
@@ -219,7 +239,6 @@ pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, 
             graph.push(audio_parts.get(0).concat("anull[out_a]"))
         else:
             mut aconcat_sb := str.NewBuilder()
-            defer str.BufFree(aconcat_sb)
             mut aai := 0
             until aai < audio_parts.len():
                 str.BufAppend(aconcat_sb, audio_parts.get(aai))
@@ -229,6 +248,7 @@ pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, 
             str.BufAppend(aconcat_sb, conv.FormatInt(audio_parts.len() as i64))
             str.BufAppend(aconcat_sb, ":v=0:a=1[out_a]")
             graph.push(str.BufStr(aconcat_sb))
+            str.BufFree(aconcat_sb)
         end
     end
 

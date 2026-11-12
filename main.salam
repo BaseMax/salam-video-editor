@@ -8,7 +8,6 @@ import fs.path
 import fs.file
 import flag
 import term
-import str
 import math
 import conv
 
@@ -27,6 +26,7 @@ func main:
     defer all_args.free()
 
     mut arglist := Vector {} as Vector<str>
+    defer arglist.free()
     mut ai := 1
     until ai < all_args.len():
         arglist.push(all_args.get(ai))
@@ -67,6 +67,7 @@ func main:
     end
 
     positional := flag.Positional(fs)
+    defer positional.free()
     if positional.len() == 0:
         term.WriteErr("ERROR: missing input file\n")
         exit_with(2)
@@ -258,6 +259,7 @@ func main:
 
         // Build inputs
         mut command := Vector {} as Vector<str>
+        defer command.free()
         command.push("-hide_banner")
         command.push("-loglevel")
         command.push("warning")
