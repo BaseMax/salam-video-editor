@@ -2,7 +2,7 @@
 
 A Salam port of a Python FFmpeg video trimmer/editor.
 
-Trim a video, optionally add intro/outro stills, and compress with FFmpeg.
+Trim a video, optionally add intro/outro stills, automatically crop black bars/time-varying padding, and compress with FFmpeg.
 
 ## Requirements
 
@@ -36,6 +36,25 @@ Or use the helper script:
 
 ```bash
 ./run.sh
+```
+
+### Auto-crop (remove black bars and padding)
+
+Automatically detect and crop black borders and apply time-varying padding removal (default: 1 cm from every edge in the first 10 minutes, 2 cm in the last 5 minutes), then scale to fill the frame:
+
+```bash
+salam run main.salam -- input.mp4 --auto-crop -o output.mp4
+```
+
+With intro/outro and custom padding:
+
+```bash
+salam run main.salam -- input.mp4 \
+  --auto-crop --crop-padding-first-cm 1 --crop-padding-last-cm 2 \
+  --crop-first-minutes 10 --crop-last-minutes 5 \
+  --intro-image images/start.png --intro-duration 3 \
+  --outro-image images/end.png --outro-duration 3 \
+  -o output.mp4
 ```
 
 ## Options
