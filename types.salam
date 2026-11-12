@@ -18,10 +18,20 @@ pub struct CropRect:
     pub y: int = 0
 end
 
+pub struct CropSegment:
+    pub offset: f64 = 0.0
+    pub duration: f64 = 0.0
+    pub rect: CropRect = CropRect {}
+    pub pad: int = 0
+end
+
 pub struct CropInfo:
     pub base: CropRect = CropRect {}
     pub first_pad_px: int = 0
     pub last_pad_px: int = 0
     pub first_min: f64 = 10.0
     pub last_min: f64 = 5.0
+    pub out_w: int = 0
+    pub out_h: int = 0
+    pub segments: Vector<CropSegment> = Vector {} as Vector<CropSegment>
 end

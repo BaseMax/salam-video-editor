@@ -43,53 +43,20 @@ pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, 
     end
 
     if auto_crop:
-        // Build segment list: (offset, duration, pad_px)
-        mut seg_offsets := Vector {} as Vector<f64>
-        mut seg_durations := Vector {} as Vector<f64>
-        mut seg_pads := Vector {} as Vector<int>
-
-        first_dur := math.Min(crop.first_min, main_duration)
-        remaining := main_duration - first_dur
-        mut last_dur := 0.0
-        if remaining > 0.0:
-            last_dur = math.Min(crop.last_min, remaining)
-        end
-        mid_dur := remaining - last_dur
-        if first_dur > 0.0:
-            seg_offsets.push(0.0)
-            seg_durations.push(first_dur)
-            seg_pads.push(crop.first_pad_px)
-        end
-        if mid_dur > 0.0:
-            seg_offsets.push(first_dur)
-            seg_durations.push(mid_dur)
-            seg_pads.push(0)
-        end
-        if last_dur > 0.0:
-            seg_offsets.push(first_dur + mid_dur)
-            seg_durations.push(last_dur)
-            seg_pads.push(crop.last_pad_px)
-        end
-        if seg_offsets.len() == 0:
-            seg_offsets.push(0.0)
-            seg_durations.push(main_duration)
-            seg_pads.push(0)
-        end
-
-        // Build each segment filter
         mut seg_labels := Vector {} as Vector<str>
         mut si := 0
-        until si < seg_offsets.len():
-            off := seg_offsets.get(si)
-            dur := seg_durations.get(si)
-            pad := seg_pads.get(si)
+        until si < crop.segments.len():
+            seg := crop.segments.get(si)
+            off := seg.offset
+            dur := seg.duration
+            pad := seg.pad
             seg_start := trim_start + off
 
-            // crop rect for this segment = base inset by pad
-            mut cw := crop.base.w - 2 * pad
-            mut ch := crop.base.h - 2 * pad
-            mut cx := crop.base.x + pad
-            mut cy := crop.base.y + pad
+            // crop rect for this segment = detected rect inset by pad
+            mut cw := seg.rect.w - 2 * pad
+            mut ch := seg.rect.h - 2 * pad
+            mut cx := seg.rect.x + pad
+            mut cy := seg.rect.y + pad
             if cw < 2:
                 cw = 2
             end
@@ -119,7 +86,12 @@ pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, 
             str.BufAppend(sb, conv.FormatInt(cx as i64))
             str.BufAppend(sb, ":")
             str.BufAppend(sb, conv.FormatInt(cy as i64))
+            // scale to common output size to fill frame (aspect preserved by crop+pad-to-cover)
             str.BufAppend(sb, ",scale=")
+            str.BufAppend(sb, conv.FormatInt(output_width as i64))
+            str.BufAppend(sb, ":")
+            str.BufAppend(sb, conv.FormatInt(output_height as i64))
+            str.BufAppend(sb, ":force_original_aspect_ratio=increase:flags=lanczos,crop=")
             str.BufAppend(sb, conv.FormatInt(output_width as i64))
             str.BufAppend(sb, ":")
             str.BufAppend(sb, conv.FormatInt(output_height as i64))
@@ -135,8 +107,12 @@ pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, 
             si++
         end
 
+        if seg_labels.len() == 0:
+            // fallback: no segments, treat as full video
+            seg_labels.push("[".concat(conv.FormatInt(main_index as i64)).concat(":v:0]"))
+        end
+
         // concat segments into main_v
-        // Build concat
         mut vconcat_sb := str.NewBuilder()
         defer str.BufFree(vconcat_sb)
         mut vi := 0

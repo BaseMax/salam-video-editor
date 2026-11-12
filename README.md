@@ -40,7 +40,9 @@ Or use the helper script:
 
 ### Auto-crop (remove black bars and padding)
 
-Automatically detect and crop black borders and apply time-varying padding removal (default: 1 cm from every edge in the first 10 minutes, 2 cm in the last 5 minutes), then scale to fill the frame:
+Automatically detect and crop black borders and apply time-varying padding removal (default: 1 cm from every edge in the first 10 minutes, 2 cm in the last 5 minutes), then scale to fill the frame.
+
+The crop area is **detected dynamically across the whole video** by sampling segments (not just the first frames), so changes in frame size/content/padding at different times (for example 10m–15m having different width/height or borders) are detected and cropped correctly. Adjacent segments with the same crop are merged for efficiency, and all segments are scaled to a common output size.
 
 ```bash
 salam run main.salam -- input.mp4 --auto-crop -o output.mp4

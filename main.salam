@@ -197,12 +197,36 @@ func main:
         if auto_crop:
             first_pad_px := crop.cm_to_px(crop_padding_first_cm, crop_dpi)
             last_pad_px := crop.cm_to_px(crop_padding_last_cm, crop_dpi)
-            base_rect := try crop.detect_crop(input_path, ffmpeg, remove_start, main_duration)
-            crop_info = types.CropInfo { base = base_rect, first_pad_px = first_pad_px, last_pad_px = last_pad_px, first_min = crop_first_minutes, last_min = crop_last_minutes }
-            has_crop = true
+            first_min_s := crop_first_minutes * 60.0
+            last_min_s := crop_last_minutes * 60.0
 
-            width = base_rect.w
-            height = base_rect.h
+            segments := try crop.detect_segments(input_path, ffmpeg, remove_start, main_duration, first_min_s, last_min_s, first_pad_px, last_pad_px)
+
+            // find max crop dimensions after padding to use as common output size
+            mut max_w := 2
+            mut max_h := 2
+            mut si := 0
+            until si < segments.len():
+                seg := segments.get(si)
+                mut cw := seg.rect.w - 2 * seg.pad
+                mut ch := seg.rect.h - 2 * seg.pad
+                if cw < 2:
+                    cw = 2
+                end
+                if ch < 2:
+                    ch = 2
+                end
+                if cw > max_w:
+                    max_w = cw
+                end
+                if ch > max_h:
+                    max_h = ch
+                end
+                si++
+            end
+
+            width = max_w
+            height = max_h
             if max_dimension > 0:
                 factor := math.Min(1.0, max_dimension as f64 / math.Max(width as f64, height as f64))
                 width = util.even_dimension((width as f64) * factor)
@@ -211,6 +235,9 @@ func main:
                 width = util.even_dimension(width as f64)
                 height = util.even_dimension(height as f64)
             end
+
+            crop_info = types.CropInfo { base = types.CropRect { w = max_w, h = max_h, x = 0, y = 0 }, first_pad_px = first_pad_px, last_pad_px = last_pad_px, first_min = first_min_s, last_min = last_min_s, out_w = width, out_h = height, segments = segments }
+            has_crop = true
         else:
             width = info.width
             height = info.height

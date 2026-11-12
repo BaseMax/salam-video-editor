@@ -6,6 +6,7 @@ import os
 import os.shell
 import str
 import conv
+import math
 
 include util "util.salam"
 include types "types.salam"
@@ -49,7 +50,6 @@ pub func detect_crop(input_path: str, ffmpeg: str, start: f64, duration: f64): t
     mut last := ""
     mut i := 0
     until i < text.len():
-        // check if "crop=" starts at i
         mut is_crop := false
         if i + 5 <= text.len():
             if text.substr(i, 5) == "crop=":
@@ -113,4 +113,67 @@ pub func detect_crop(input_path: str, ffmpeg: str, start: f64, duration: f64): t
     end
 
     ret types.CropRect { w = w, h = h, x = x, y = y }
+end
+
+pub func rect_equal(a: types.CropRect, b: types.CropRect): bool:
+    ret a.w == b.w and a.h == b.h and a.x == b.x and a.y == b.y
+end
+
+pub func detect_segments(input_path: str, ffmpeg: str, trim_start: f64, main_duration: f64, first_min: f64, last_min: f64, first_pad: int, last_pad: int): Vector<types.CropSegment> throws:
+    mut segs := Vector {} as Vector<types.CropSegment>
+    interval := 30.0
+    sample_dur := 4.0
+    mut t := 0.0
+    until t < main_duration:
+        mut seg_dur := interval
+        if t + seg_dur > main_duration:
+            seg_dur = main_duration - t
+        end
+        mut sdur := sample_dur
+        if sdur > seg_dur:
+            sdur = seg_dur
+        end
+        sample_start := trim_start + t
+        rect := try detect_crop(input_path, ffmpeg, sample_start, sdur)
+
+        // pad based on time position
+        mut pad := 0
+        first_end := math.Min(first_min, main_duration)
+        if t < first_end:
+            pad = first_pad
+        end
+        // last region: from (main_duration - last_min) to end
+        mut last_start := main_duration - last_min
+        if last_start < 0.0:
+            last_start = 0.0
+        end
+        if t + seg_dur > last_start:
+            // if segment overlaps last region, prefer last pad
+            if t >= last_start or pad == 0:
+                pad = last_pad
+            end
+        end
+
+        // merge with previous if same rect and pad
+        mut merged := false
+        if segs.len() > 0:
+            last_i := segs.len() - 1
+            prev := segs.get(last_i)
+            if rect_equal(prev.rect, rect) and prev.pad == pad:
+                prev.duration += seg_dur
+                segs.set(last_i, prev)
+                merged = true
+            end
+        end
+        if not merged:
+            segs.push(types.CropSegment { offset = t, duration = seg_dur, rect = rect, pad = pad })
+        end
+        t += seg_dur
+    end
+    if segs.len() == 0:
+        // fallback single segment
+        rect := try detect_crop(input_path, ffmpeg, trim_start, math.Min(main_duration, 5.0))
+        segs.push(types.CropSegment { offset = 0.0, duration = main_duration, rect = rect, pad = 0 })
+    end
+    ret segs
 end
