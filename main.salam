@@ -16,6 +16,7 @@ include types "types.salam"
 include util "util.salam"
 include probe "probe.salam"
 include filter "filter.salam"
+include crop "crop.salam"
 
 func exit_with(code: int):
     os.Exit(code)
@@ -48,6 +49,12 @@ func main:
     flag.AddStr(fs, "ffmpeg", "", "ffmpeg", "FFmpeg executable name or full path")
     flag.AddStr(fs, "ffprobe", "", "ffprobe", "FFmpeg executable name or full path")
     flag.AddBool(fs, "overwrite", "", false, "Overwrite the output file if it already exists")
+    flag.AddBool(fs, "auto-crop", "", false, "Automatically remove black bars and time-varying padding, making the video full screen")
+    flag.AddFloat(fs, "crop-padding-first-cm", "", 1.0, "Extra padding (cm) to remove from every edge during the first minutes (auto-crop)")
+    flag.AddFloat(fs, "crop-padding-last-cm", "", 2.0, "Extra padding (cm) to remove from every edge during the last minutes (auto-crop)")
+    flag.AddFloat(fs, "crop-first-minutes", "", 10.0, "How many minutes at the start use the first padding value (auto-crop)")
+    flag.AddFloat(fs, "crop-last-minutes", "", 5.0, "How many minutes at the end use the last padding value (auto-crop)")
+    flag.AddInt(fs, "crop-dpi", "", 96, "DPI used to convert crop padding cm to pixels (auto-crop)")
 
     ok := flag.Parse(fs, arglist)
     if not ok:
@@ -94,6 +101,12 @@ func main:
 
     remove_start := flag.GetFloat(fs, "remove-start")
     remove_end := flag.GetFloat(fs, "remove-end")
+    auto_crop := flag.GetBool(fs, "auto-crop")
+    crop_padding_first_cm := flag.GetFloat(fs, "crop-padding-first-cm")
+    crop_padding_last_cm := flag.GetFloat(fs, "crop-padding-last-cm")
+    crop_first_minutes := flag.GetFloat(fs, "crop-first-minutes")
+    crop_last_minutes := flag.GetFloat(fs, "crop-last-minutes")
+    crop_dpi := flag.GetInt(fs, "crop-dpi")
     intro_duration_arg := flag.GetFloat(fs, "intro-duration")
     outro_duration_arg := flag.GetFloat(fs, "outro-duration")
     max_dimension := flag.GetInt(fs, "max-dimension")
@@ -177,15 +190,38 @@ func main:
             throw Error.New(ErrorKind.InvalidArgument, "The requested trim removes the entire video. Source duration: ".concat(conv.FormatFloat(source_duration)).concat(" seconds."))
         end
 
-        mut width := info.width
-        mut height := info.height
-        if max_dimension > 0:
-            factor := math.Min(1.0, max_dimension as f64 / math.Max(width as f64, height as f64))
-            width = util.even_dimension((width as f64) * factor)
-            height = util.even_dimension((height as f64) * factor)
+        mut crop_info := types.CropInfo {}
+        mut has_crop := false
+        mut width := 0
+        mut height := 0
+        if auto_crop:
+            first_pad_px := crop.cm_to_px(crop_padding_first_cm, crop_dpi)
+            last_pad_px := crop.cm_to_px(crop_padding_last_cm, crop_dpi)
+            base_rect := try crop.detect_crop(input_path, ffmpeg, remove_start, main_duration)
+            crop_info = types.CropInfo { base = base_rect, first_pad_px = first_pad_px, last_pad_px = last_pad_px, first_min = crop_first_minutes, last_min = crop_last_minutes }
+            has_crop = true
+
+            width = base_rect.w
+            height = base_rect.h
+            if max_dimension > 0:
+                factor := math.Min(1.0, max_dimension as f64 / math.Max(width as f64, height as f64))
+                width = util.even_dimension((width as f64) * factor)
+                height = util.even_dimension((height as f64) * factor)
+            else:
+                width = util.even_dimension(width as f64)
+                height = util.even_dimension(height as f64)
+            end
         else:
-            width = util.even_dimension(width as f64)
-            height = util.even_dimension(height as f64)
+            width = info.width
+            height = info.height
+            if max_dimension > 0:
+                factor := math.Min(1.0, max_dimension as f64 / math.Max(width as f64, height as f64))
+                width = util.even_dimension((width as f64) * factor)
+                height = util.even_dimension((height as f64) * factor)
+            else:
+                width = util.even_dimension(width as f64)
+                height = util.even_dimension(height as f64)
+            end
         end
 
         fps_num := info.fps_num
@@ -238,7 +274,7 @@ func main:
             command.push(outro_path)
         end
 
-        graph := filter.build_filter_graph(main_index, has_intro, intro_index, has_outro, outro_index, intro_duration, outro_duration, remove_start, main_duration, width, height, fps_expr, frame_timebase_expr, info.has_audio)
+        graph := filter.build_filter_graph(main_index, has_intro, intro_index, has_outro, outro_index, intro_duration, outro_duration, remove_start, main_duration, width, height, fps_expr, frame_timebase_expr, info.has_audio, has_crop, crop_info)
 
         command.push("-filter_complex")
         command.push(graph)

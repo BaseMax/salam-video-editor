@@ -1,0 +1,116 @@
+// lang: en
+
+package main
+
+import os
+import os.shell
+import str
+import conv
+
+include util "util.salam"
+include types "types.salam"
+
+pub func cm_to_px(cm: f64, dpi: i64): int:
+    px := (cm * (dpi as f64) / 2.54) as int
+    if px < 0:
+        ret 0
+    end
+    ret px
+end
+
+pub func detect_crop(input_path: str, ffmpeg: str, start: f64, duration: f64): types.CropRect throws:
+    mut args := Vector {} as Vector<str>
+    args.push("-hide_banner")
+    args.push("-loglevel")
+    args.push("info")
+    args.push("-ss")
+    args.push(util.seconds(start))
+    args.push("-t")
+    args.push(util.seconds(duration))
+    args.push("-i")
+    args.push(input_path)
+    args.push("-vf")
+    args.push("cropdetect=limit=24:round=2")
+    args.push("-an")
+    args.push("-f")
+    args.push("null")
+    args.push("-")
+
+    r := shell.Run(ffmpeg, args)
+    mut text := r.err
+    if text.len() == 0:
+        text = r.out
+    end
+    if r.code == 0 - 1:
+        throw Error.New(ErrorKind.NotFound, "Could not find '".concat(ffmpeg).concat("'."))
+    end
+
+    // Find last crop=W:H:X:Y occurrence
+    mut last := ""
+    mut i := 0
+    until i < text.len():
+        // check if "crop=" starts at i
+        mut is_crop := false
+        if i + 5 <= text.len():
+            if text.substr(i, 5) == "crop=":
+                is_crop = true
+            end
+        end
+        if is_crop:
+            mut j := i + 5
+            mut buf := str.NewBuilder()
+            defer str.BufFree(buf)
+            until j < text.len():
+                c := text.substr(j, 1)
+                if c == " " or c == "\n" or c == "\r" or c == "\t":
+                    break
+                end
+                str.BufAppend(buf, c)
+                j++
+            end
+            candidate := str.BufStr(buf)
+            if candidate.len() > 0:
+                last = candidate
+            end
+            i = j
+        else:
+            i++
+        end
+    end
+
+    if last.len() == 0:
+        throw Error.New(ErrorKind.Internal, "cropdetect did not produce a crop value.")
+    end
+
+    // parse W:H:X:Y
+    mut parts := Vector {} as Vector<str>
+    mut k := 0
+    mut cur := str.NewBuilder()
+    defer str.BufFree(cur)
+    until k < last.len():
+        c := last.char_at(k)
+        if c == ":":
+            parts.push(str.BufStr(cur))
+            str.BufReset(cur)
+        else:
+            str.BufAppend(cur, c)
+        end
+        k++
+    end
+    if str.BufLen(cur) > 0:
+        parts.push(str.BufStr(cur))
+    end
+    if parts.len() < 4:
+        throw Error.New(ErrorKind.Internal, "Could not parse crop value: ".concat(last))
+    end
+
+    w := conv.ParseIntOr(parts.get(0), 0) as int
+    h := conv.ParseIntOr(parts.get(1), 0) as int
+    x := conv.ParseIntOr(parts.get(2), 0) as int
+    y := conv.ParseIntOr(parts.get(3), 0) as int
+    if w <= 0 or h <= 0:
+        throw Error.New(ErrorKind.Internal, "Invalid crop dimensions: ".concat(last))
+    end
+
+    ret types.CropRect { w = w, h = h, x = x, y = y }
+end

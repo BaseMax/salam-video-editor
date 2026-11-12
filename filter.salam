@@ -4,8 +4,10 @@ package main
 
 import str
 import conv
+import math
 
 include util "util.salam"
+include types "types.salam"
 
 pub func append_image_video(graph &: Vector<str>, video_parts &: Vector<str>, index: int, label: str, output_width: int, output_height: int, fps_expr: str, frame_timebase_expr: str):
     mut sb := str.NewBuilder()
@@ -31,7 +33,7 @@ pub func append_image_video(graph &: Vector<str>, video_parts &: Vector<str>, in
     video_parts.push("[".concat(label).concat("]"))
 end
 
-pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, has_outro: bool, outro_index: int, intro_duration: f64, outro_duration: f64, trim_start: f64, main_duration: f64, output_width: int, output_height: int, fps_expr: str, frame_timebase_expr: str, has_audio: bool): str:
+pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, has_outro: bool, outro_index: int, intro_duration: f64, outro_duration: f64, trim_start: f64, main_duration: f64, output_width: int, output_height: int, fps_expr: str, frame_timebase_expr: str, has_audio: bool, auto_crop: bool, crop: types.CropInfo): str:
     mut graph := Vector {} as Vector<str>
     mut video_parts := Vector {} as Vector<str>
     mut audio_parts := Vector {} as Vector<str>
@@ -40,29 +42,138 @@ pub func build_filter_graph(main_index: int, has_intro: bool, intro_index: int, 
         append_image_video(graph, video_parts, intro_index, "intro_v", output_width, output_height, fps_expr, frame_timebase_expr)
     end
 
-    mut main_sb := str.NewBuilder()
-    defer str.BufFree(main_sb)
-    str.BufAppend(main_sb, "[")
-    str.BufAppend(main_sb, conv.FormatInt(main_index as i64))
-    str.BufAppend(main_sb, ":v:0]trim=start=")
-    str.BufAppend(main_sb, util.seconds(trim_start))
-    str.BufAppend(main_sb, ":duration=")
-    str.BufAppend(main_sb, util.seconds(main_duration))
-    str.BufAppend(main_sb, ",setpts=PTS-STARTPTS,scale=")
-    str.BufAppend(main_sb, conv.FormatInt(output_width as i64))
-    str.BufAppend(main_sb, ":")
-    str.BufAppend(main_sb, conv.FormatInt(output_height as i64))
-    str.BufAppend(main_sb, ":force_original_aspect_ratio=decrease:flags=lanczos,pad=")
-    str.BufAppend(main_sb, conv.FormatInt(output_width as i64))
-    str.BufAppend(main_sb, ":")
-    str.BufAppend(main_sb, conv.FormatInt(output_height as i64))
-    str.BufAppend(main_sb, ":(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=")
-    str.BufAppend(main_sb, fps_expr)
-    str.BufAppend(main_sb, ",settb=expr=")
-    str.BufAppend(main_sb, frame_timebase_expr)
-    str.BufAppend(main_sb, ",setpts=N,format=yuv420p[main_v]")
-    graph.push(str.BufStr(main_sb))
-    video_parts.push("[main_v]")
+    if auto_crop:
+        // Build segment list: (offset, duration, pad_px)
+        mut seg_offsets := Vector {} as Vector<f64>
+        mut seg_durations := Vector {} as Vector<f64>
+        mut seg_pads := Vector {} as Vector<int>
+
+        first_dur := math.Min(crop.first_min, main_duration)
+        remaining := main_duration - first_dur
+        mut last_dur := 0.0
+        if remaining > 0.0:
+            last_dur = math.Min(crop.last_min, remaining)
+        end
+        mid_dur := remaining - last_dur
+        if first_dur > 0.0:
+            seg_offsets.push(0.0)
+            seg_durations.push(first_dur)
+            seg_pads.push(crop.first_pad_px)
+        end
+        if mid_dur > 0.0:
+            seg_offsets.push(first_dur)
+            seg_durations.push(mid_dur)
+            seg_pads.push(0)
+        end
+        if last_dur > 0.0:
+            seg_offsets.push(first_dur + mid_dur)
+            seg_durations.push(last_dur)
+            seg_pads.push(crop.last_pad_px)
+        end
+        if seg_offsets.len() == 0:
+            seg_offsets.push(0.0)
+            seg_durations.push(main_duration)
+            seg_pads.push(0)
+        end
+
+        // Build each segment filter
+        mut seg_labels := Vector {} as Vector<str>
+        mut si := 0
+        until si < seg_offsets.len():
+            off := seg_offsets.get(si)
+            dur := seg_durations.get(si)
+            pad := seg_pads.get(si)
+            seg_start := trim_start + off
+
+            // crop rect for this segment = base inset by pad
+            mut cw := crop.base.w - 2 * pad
+            mut ch := crop.base.h - 2 * pad
+            mut cx := crop.base.x + pad
+            mut cy := crop.base.y + pad
+            if cw < 2:
+                cw = 2
+            end
+            if ch < 2:
+                ch = 2
+            end
+            if cx < 0:
+                cx = 0
+            end
+            if cy < 0:
+                cy = 0
+            end
+
+            mut sb := str.NewBuilder()
+            defer str.BufFree(sb)
+            str.BufAppend(sb, "[")
+            str.BufAppend(sb, conv.FormatInt(main_index as i64))
+            str.BufAppend(sb, ":v:0]trim=start=")
+            str.BufAppend(sb, util.seconds(seg_start))
+            str.BufAppend(sb, ":duration=")
+            str.BufAppend(sb, util.seconds(dur))
+            str.BufAppend(sb, ",setpts=PTS-STARTPTS,crop=")
+            str.BufAppend(sb, conv.FormatInt(cw as i64))
+            str.BufAppend(sb, ":")
+            str.BufAppend(sb, conv.FormatInt(ch as i64))
+            str.BufAppend(sb, ":")
+            str.BufAppend(sb, conv.FormatInt(cx as i64))
+            str.BufAppend(sb, ":")
+            str.BufAppend(sb, conv.FormatInt(cy as i64))
+            str.BufAppend(sb, ",scale=")
+            str.BufAppend(sb, conv.FormatInt(output_width as i64))
+            str.BufAppend(sb, ":")
+            str.BufAppend(sb, conv.FormatInt(output_height as i64))
+            str.BufAppend(sb, ",setsar=1,fps=")
+            str.BufAppend(sb, fps_expr)
+            str.BufAppend(sb, ",settb=expr=")
+            str.BufAppend(sb, frame_timebase_expr)
+            str.BufAppend(sb, ",setpts=N,format=yuv420p[seg")
+            str.BufAppend(sb, conv.FormatInt(si as i64))
+            str.BufAppend(sb, "_v]")
+            graph.push(str.BufStr(sb))
+            seg_labels.push("[seg".concat(conv.FormatInt(si as i64)).concat("_v]"))
+            si++
+        end
+
+        // concat segments into main_v
+        // Build concat
+        mut vconcat_sb := str.NewBuilder()
+        defer str.BufFree(vconcat_sb)
+        mut vi := 0
+        until vi < seg_labels.len():
+            str.BufAppend(vconcat_sb, seg_labels.get(vi))
+            vi++
+        end
+        str.BufAppend(vconcat_sb, "concat=n=")
+        str.BufAppend(vconcat_sb, conv.FormatInt(seg_labels.len() as i64))
+        str.BufAppend(vconcat_sb, ":v=1:a=0[main_v]")
+        graph.push(str.BufStr(vconcat_sb))
+        video_parts.push("[main_v]")
+    else:
+        mut main_sb := str.NewBuilder()
+        defer str.BufFree(main_sb)
+        str.BufAppend(main_sb, "[")
+        str.BufAppend(main_sb, conv.FormatInt(main_index as i64))
+        str.BufAppend(main_sb, ":v:0]trim=start=")
+        str.BufAppend(main_sb, util.seconds(trim_start))
+        str.BufAppend(main_sb, ":duration=")
+        str.BufAppend(main_sb, util.seconds(main_duration))
+        str.BufAppend(main_sb, ",setpts=PTS-STARTPTS,scale=")
+        str.BufAppend(main_sb, conv.FormatInt(output_width as i64))
+        str.BufAppend(main_sb, ":")
+        str.BufAppend(main_sb, conv.FormatInt(output_height as i64))
+        str.BufAppend(main_sb, ":force_original_aspect_ratio=decrease:flags=lanczos,pad=")
+        str.BufAppend(main_sb, conv.FormatInt(output_width as i64))
+        str.BufAppend(main_sb, ":")
+        str.BufAppend(main_sb, conv.FormatInt(output_height as i64))
+        str.BufAppend(main_sb, ":(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=")
+        str.BufAppend(main_sb, fps_expr)
+        str.BufAppend(main_sb, ",settb=expr=")
+        str.BufAppend(main_sb, frame_timebase_expr)
+        str.BufAppend(main_sb, ",setpts=N,format=yuv420p[main_v]")
+        graph.push(str.BufStr(main_sb))
+        video_parts.push("[main_v]")
+    end
 
     if has_outro:
         append_image_video(graph, video_parts, outro_index, "outro_v", output_width, output_height, fps_expr, frame_timebase_expr)

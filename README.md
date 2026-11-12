@@ -46,6 +46,12 @@ Or use the helper script:
 - `--intro-duration SECONDS` — how long to show the intro (default 3)
 - `--outro-image PATH` — image shown after the video
 - `--outro-duration SECONDS` — how long to show the outro (default 3)
+- `--auto-crop` — automatically remove black bars and time-varying padding to make the video full screen
+- `--crop-padding-first-cm CM` — extra padding (cm) to remove from every edge during the first segment (default 1.0, used with `--auto-crop`)
+- `--crop-padding-last-cm CM` — extra padding (cm) to remove from every edge during the last segment (default 2.0, used with `--auto-crop`)
+- `--crop-first-minutes MIN` — how many minutes at the start use the first padding value (default 10, used with `--auto-crop`)
+- `--crop-last-minutes MIN` — how many minutes at the end use the last padding value (default 5, used with `--auto-crop`)
+- `--crop-dpi DPI` — DPI used to convert padding cm to pixels (default 96, used with `--auto-crop`)
 - `--codec h264|h265` — video codec (default h264)
 - `--crf N` — quality level (default 23 for h264, 28 for h265)
 - `--preset NAME` — encoder preset (default slow)
@@ -53,7 +59,7 @@ Or use the helper script:
 - `--max-dimension N` — cap width/height (default 1920; 0 keeps source resolution)
 - `--ffmpeg NAME_OR_PATH` — ffmpeg executable (default ffmpeg)
 - `--ffprobe NAME_OR_PATH` — ffprobe executable (default ffprobe)
-- `--overwrite` — overwrite the output file if it exists
+- `--overwrite` — overwrite the output file if it already exists
 
 ## Notes
 

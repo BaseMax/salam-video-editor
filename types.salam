@@ -10,3 +10,18 @@ pub struct VideoInfo:
     pub fps_den: int = 1
     pub has_audio: bool = false
 end
+
+pub struct CropRect:
+    pub w: int = 0
+    pub h: int = 0
+    pub x: int = 0
+    pub y: int = 0
+end
+
+pub struct CropInfo:
+    pub base: CropRect = CropRect {}
+    pub first_pad_px: int = 0
+    pub last_pad_px: int = 0
+    pub first_min: f64 = 10.0
+    pub last_min: f64 = 5.0
+end
