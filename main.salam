@@ -23,13 +23,13 @@ end
 
 func main:
     all_args := os.Args()
-    defer all_args.free()
+    defer all_args.Free()
 
     mut arglist := Vector {} as Vector<str>
-    defer arglist.free()
+    defer arglist.Free()
     mut ai := 1
-    until ai < all_args.len():
-        arglist.push(all_args.get(ai))
+    until ai < all_args.Len():
+        arglist.Push(all_args.Get(ai))
         ai++
     end
 
@@ -67,12 +67,12 @@ func main:
     end
 
     positional := flag.Positional(fs)
-    defer positional.free()
-    if positional.len() == 0:
+    defer positional.Free()
+    if positional.Len() == 0:
         term.WriteErr("ERROR: missing input file\n")
         exit_with(2)
     end
-    input_raw := positional.get(0)
+    input_raw := positional.Get(0)
 
     input_path := path.Abs(util.expand_path(input_raw))
 
@@ -207,8 +207,8 @@ func main:
             mut max_w := 2
             mut max_h := 2
             mut si := 0
-            until si < segments.len():
-                seg := segments.get(si)
+            until si < segments.Len():
+                seg := segments.Get(si)
                 mut cw := seg.rect.w - 2 * seg.pad
                 mut ch := seg.rect.h - 2 * seg.pad
                 if cw < 2:
@@ -259,11 +259,11 @@ func main:
 
         // Build inputs
         mut command := Vector {} as Vector<str>
-        defer command.free()
-        command.push("-hide_banner")
-        command.push("-loglevel")
-        command.push("warning")
-        command.push("-stats")
+        defer command.Free()
+        command.Push("-hide_banner")
+        command.Push("-loglevel")
+        command.Push("warning")
+        command.Push("-stats")
 
         mut input_index := 0
         mut intro_index := 0
@@ -274,50 +274,50 @@ func main:
         if intro_path.len() > 0:
             intro_index = input_index
             has_intro = true
-            command.push("-loop")
-            command.push("1")
-            command.push("-framerate")
-            command.push(fps_expr)
-            command.push("-t")
-            command.push(util.seconds(intro_duration))
-            command.push("-i")
-            command.push(intro_path)
+            command.Push("-loop")
+            command.Push("1")
+            command.Push("-framerate")
+            command.Push(fps_expr)
+            command.Push("-t")
+            command.Push(util.seconds(intro_duration))
+            command.Push("-i")
+            command.Push(intro_path)
             input_index++
         end
 
         main_index := input_index
-        command.push("-i")
-        command.push(input_path)
+        command.Push("-i")
+        command.Push(input_path)
         input_index++
 
         if outro_path.len() > 0:
             outro_index = input_index
             has_outro = true
-            command.push("-loop")
-            command.push("1")
-            command.push("-framerate")
-            command.push(fps_expr)
-            command.push("-t")
-            command.push(util.seconds(outro_duration))
-            command.push("-i")
-            command.push(outro_path)
+            command.Push("-loop")
+            command.Push("1")
+            command.Push("-framerate")
+            command.Push(fps_expr)
+            command.Push("-t")
+            command.Push(util.seconds(outro_duration))
+            command.Push("-i")
+            command.Push(outro_path)
         end
 
         graph := filter.build_filter_graph(main_index, has_intro, intro_index, has_outro, outro_index, intro_duration, outro_duration, remove_start, main_duration, width, height, fps_expr, frame_timebase_expr, info.has_audio, has_crop, crop_info)
 
-        command.push("-filter_complex")
-        command.push(graph)
-        command.push("-map")
-        command.push("[out_v]")
+        command.Push("-filter_complex")
+        command.Push(graph)
+        command.Push("-map")
+        command.Push("[out_v]")
         if info.has_audio:
-            command.push("-map")
-            command.push("[out_a]")
-            command.push("-c:a")
-            command.push("aac")
-            command.push("-b:a")
-            command.push(audio_bitrate)
+            command.Push("-map")
+            command.Push("[out_a]")
+            command.Push("-c:a")
+            command.Push("aac")
+            command.Push("-b:a")
+            command.Push(audio_bitrate)
         else:
-            command.push("-an")
+            command.Push("-an")
         end
 
         mut crf := 0
@@ -327,48 +327,48 @@ func main:
             else:
                 crf = 23
             end
-            command.push("-c:v")
-            command.push("libx264")
-            command.push("-preset")
-            command.push(preset)
-            command.push("-crf")
-            command.push(conv.FormatInt(crf as i64))
+            command.Push("-c:v")
+            command.Push("libx264")
+            command.Push("-preset")
+            command.Push(preset)
+            command.Push("-crf")
+            command.Push(conv.FormatInt(crf as i64))
         else:
             if flag.WasSet(fs, "crf"):
                 crf = flag.GetInt(fs, "crf") as int
             else:
                 crf = 28
             end
-            command.push("-c:v")
-            command.push("libx265")
-            command.push("-preset")
-            command.push(preset)
-            command.push("-crf")
-            command.push(conv.FormatInt(crf as i64))
-            command.push("-tag:v")
-            command.push("hvc1")
+            command.Push("-c:v")
+            command.Push("libx265")
+            command.Push("-preset")
+            command.Push(preset)
+            command.Push("-crf")
+            command.Push(conv.FormatInt(crf as i64))
+            command.Push("-tag:v")
+            command.Push("hvc1")
         end
 
-        command.push("-pix_fmt")
-        command.push("yuv420p")
-        command.push("-enc_time_base:v")
-        command.push(conv.FormatInt(fps_den as i64).concat(":").concat(conv.FormatInt(fps_num as i64)))
-        command.push("-fps_mode:v")
-        command.push("cfr")
-        command.push("-r")
-        command.push(fps_expr)
-        command.push("-map_metadata")
-        command.push(conv.FormatInt(main_index as i64))
-        command.push("-metadata:s:v:0")
-        command.push("rotate=0")
-        command.push("-movflags")
-        command.push("+faststart")
+        command.Push("-pix_fmt")
+        command.Push("yuv420p")
+        command.Push("-enc_time_base:v")
+        command.Push(conv.FormatInt(fps_den as i64).concat(":").concat(conv.FormatInt(fps_num as i64)))
+        command.Push("-fps_mode:v")
+        command.Push("cfr")
+        command.Push("-r")
+        command.Push(fps_expr)
+        command.Push("-map_metadata")
+        command.Push(conv.FormatInt(main_index as i64))
+        command.Push("-metadata:s:v:0")
+        command.Push("rotate=0")
+        command.Push("-movflags")
+        command.Push("+faststart")
         if overwrite:
-            command.push("-y")
+            command.Push("-y")
         else:
-            command.push("-n")
+            command.Push("-n")
         end
-        command.push(output_path)
+        command.Push(output_path)
 
         os.MkdirAll(path.Parent(output_path))
 

@@ -18,24 +18,24 @@ pub func cm_to_px(cm: f64, dpi: i64): int:
     ret px
 end
 
-pub func detect_crop(input_path: str, ffmpeg: str, start: f64, duration: f64): types.CropRect throws:
+pub func detect_crop(input_path: str, ffmpeg: str, start: f64, duration: f64): types.CropRect throw:
     mut args := Vector {} as Vector<str>
-    defer args.free()
-    args.push("-hide_banner")
-    args.push("-loglevel")
-    args.push("info")
-    args.push("-ss")
-    args.push(util.seconds(start))
-    args.push("-t")
-    args.push(util.seconds(duration))
-    args.push("-i")
-    args.push(input_path)
-    args.push("-vf")
-    args.push("cropdetect=limit=24:round=2")
-    args.push("-an")
-    args.push("-f")
-    args.push("null")
-    args.push("-")
+    defer args.Free()
+    args.Push("-hide_banner")
+    args.Push("-loglevel")
+    args.Push("info")
+    args.Push("-ss")
+    args.Push(util.seconds(start))
+    args.Push("-t")
+    args.Push(util.seconds(duration))
+    args.Push("-i")
+    args.Push(input_path)
+    args.Push("-vf")
+    args.Push("cropdetect=limit=24:round=2")
+    args.Push("-an")
+    args.Push("-f")
+    args.Push("null")
+    args.Push("-")
 
     r := shell.Run(ffmpeg, args)
     mut text := r.err
@@ -80,28 +80,28 @@ pub func detect_crop(input_path: str, ffmpeg: str, start: f64, duration: f64): t
 
     // parse W:H:X:Y
     mut parts := Vector {} as Vector<str>
-    defer parts.free()
+    defer parts.Free()
     mut k := 0
     mut cur := ""
     until k < last.len():
         c := last.substr(k, 1)
         if c == ":":
-            parts.push(cur)
+            parts.Push(cur)
             cur = ""
         else:
             cur = cur.concat(c)
         end
         k++
     end
-    parts.push(cur)
-    if parts.len() < 4:
+    parts.Push(cur)
+    if parts.Len() < 4:
         throw Error.New(ErrorKind.Internal, "Could not parse crop value: ".concat(last))
     end
 
-    w := conv.ParseIntOr(parts.get(0), 0) as int
-    h := conv.ParseIntOr(parts.get(1), 0) as int
-    x := conv.ParseIntOr(parts.get(2), 0) as int
-    y := conv.ParseIntOr(parts.get(3), 0) as int
+    w := conv.ParseIntOr(parts.Get(0), 0) as int
+    h := conv.ParseIntOr(parts.Get(1), 0) as int
+    x := conv.ParseIntOr(parts.Get(2), 0) as int
+    y := conv.ParseIntOr(parts.Get(3), 0) as int
     if w <= 0 or h <= 0:
         throw Error.New(ErrorKind.Internal, "Invalid crop dimensions: ".concat(last))
     end
@@ -113,7 +113,7 @@ pub func rect_equal(a: types.CropRect, b: types.CropRect): bool:
     ret a.w == b.w and a.h == b.h and a.x == b.x and a.y == b.y
 end
 
-pub func detect_segments(input_path: str, ffmpeg: str, trim_start: f64, main_duration: f64, first_min: f64, last_min: f64, first_pad: int, last_pad: int): Vector<types.CropSegment> throws:
+pub func detect_segments(input_path: str, ffmpeg: str, trim_start: f64, main_duration: f64, first_min: f64, last_min: f64, first_pad: int, last_pad: int): Vector<types.CropSegment> throw:
     mut segs := Vector {} as Vector<types.CropSegment>
     interval := 30.0
     sample_dur := 4.0
@@ -152,24 +152,24 @@ pub func detect_segments(input_path: str, ffmpeg: str, trim_start: f64, main_dur
         end
 
         mut merged := false
-        if segs.len() > 0:
-            last_i := segs.len() - 1
-            prev := segs.get(last_i)
+        if segs.Len() > 0:
+            last_i := segs.Len() - 1
+            prev := segs.Get(last_i)
             if rect_equal(prev.rect, rect) and prev.pad == pad:
                 prev.duration += seg_dur
-                segs.set(last_i, prev)
+                segs.Set(last_i, prev)
                 merged = true
             end
         end
         if not merged:
-            segs.push(types.CropSegment { offset = t, duration = seg_dur, rect = rect, pad = pad })
+            segs.Push(types.CropSegment { offset = t, duration = seg_dur, rect = rect, pad = pad })
         end
         t += seg_dur
     end
 
-    if segs.len() == 0:
+    if segs.Len() == 0:
         rect := try detect_crop(input_path, ffmpeg, trim_start, math.Min(main_duration, 5.0))
-        segs.push(types.CropSegment { offset = 0.0, duration = main_duration, rect = rect, pad = 0 })
+        segs.Push(types.CropSegment { offset = 0.0, duration = main_duration, rect = rect, pad = 0 })
     end
     ret segs
 end
