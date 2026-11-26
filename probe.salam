@@ -10,28 +10,28 @@ import conv
 include util "util.salam"
 include types "types.salam"
 
-pub func probe_video(input_path: str, ffprobe: str): types.VideoInfo throws:
+pub func probe_video(input_path: str, ffprobe: str): types.VideoInfo throw:
     mut args := Vector {} as Vector<str>
-    args.push("-v")
-    args.push("error")
-    args.push("-show_streams")
-    args.push("-show_format")
-    args.push("-of")
-    args.push("json")
-    args.push(input_path)
+    args.Push("-v")
+    args.Push("error")
+    args.Push("-show_streams")
+    args.Push("-show_format")
+    args.Push("-of")
+    args.Push("json")
+    args.Push(input_path)
 
     raw := try util.run_capture(ffprobe, args)
-    args.free()
+    args.Free()
 
     streams_text := json.Get(raw, "streams")
     streams := json.Items(streams_text)
-    defer streams.free()
+    defer streams.Free()
 
     mut video_text := ""
     mut found_video := false
     mut i := 0
-    until i < streams.len() and not found_video:
-        s := streams.get(i)
+    until i < streams.Len() and not found_video:
+        s := streams.Get(i)
         if json.Get(s, "codec_type") == "video":
             video_text = s
             found_video = true
@@ -67,13 +67,13 @@ pub func probe_video(input_path: str, ffprobe: str): types.VideoInfo throws:
     side_list_text := json.Get(video_text, "side_data_list")
     if side_list_text.len() > 0:
         side_items := json.Items(side_list_text)
-        defer side_items.free()
+        defer side_items.Free()
         mut si := 0
-        until si < side_items.len():
-            item := side_items.get(si)
+        until si < side_items.Len():
+            item := side_items.Get(si)
             if json.Has(item, "rotation"):
                 rotation = conv.ParseFloatOr(json.Get(item, "rotation"), rotation)
-                si = side_items.len()
+                si = side_items.Len()
             end
             si++
         end
@@ -94,12 +94,12 @@ pub func probe_video(input_path: str, ffprobe: str): types.VideoInfo throws:
     mut fps_den := 1
     mut fps_found := false
     mut cand_list := Vector {} as Vector<str>
-    defer cand_list.free()
-    cand_list.push(json.Get(video_text, "avg_frame_rate"))
-    cand_list.push(json.Get(video_text, "r_frame_rate"))
+    defer cand_list.Free()
+    cand_list.Push(json.Get(video_text, "avg_frame_rate"))
+    cand_list.Push(json.Get(video_text, "r_frame_rate"))
     mut ci := 0
-    until ci < cand_list.len() and not fps_found:
-        cand := cand_list.get(ci)
+    until ci < cand_list.Len() and not fps_found:
+        cand := cand_list.Get(ci)
         if cand.len() > 0:
             slash := str.Find(cand, "/")
             mut n_str := cand
@@ -132,8 +132,8 @@ pub func probe_video(input_path: str, ffprobe: str): types.VideoInfo throws:
 
     mut has_audio := false
     mut ai := 0
-    until ai < streams.len() and not has_audio:
-        s := streams.get(ai)
+    until ai < streams.Len() and not has_audio:
+        s := streams.Get(ai)
         if json.Get(s, "codec_type") == "audio":
             has_audio = true
         end

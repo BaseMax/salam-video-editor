@@ -13,7 +13,7 @@ Trim a video, optionally add intro/outro stills, automatically crop black bars/t
   - Linux (Fedora): `sudo dnf install ffmpeg`
   - Linux (Arch): `sudo pacman -S ffmpeg`
   - FreeBSD: `sudo pkg install ffmpeg`
-- Salam compiler (`salam`) >= 0.5.9
+- Salam compiler (`salam`) >= 0.7.1
 
 ## Build & Run
 

@@ -25,7 +25,7 @@ pub func expand_path(p: str): str:
     ret p
 end
 
-pub func run_capture(program: str, args: Vector<str>): str throws:
+pub func run_capture(program: str, args: Vector<str>): str throw:
     r := shell.Run(program, args)
     if r.code == 0 - 1:
         throw Error.New(ErrorKind.NotFound, "Could not find '".concat(program).concat("'. Install FFmpeg (including ffprobe) and make sure both programs are on PATH."))
@@ -73,8 +73,8 @@ end
 
 pub func tool_exists(program: str): bool:
     mut args := Vector {} as Vector<str>
-    defer args.free()
-    args.push("-version")
+    defer args.Free()
+    args.Push("-version")
     r := shell.Run(program, args)
     ret r.code != 0 - 1
 end
